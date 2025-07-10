@@ -1,0 +1,19 @@
+# Python Bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual Environments
+.venv/
+venv/
+
+# Downloads and Extracted folders
+downloaded_repo/
+repo_extracted/
+*.zip
+
+# IDE Configs
+.vscode/
+.idea/
+
+# Secrets (if any)
+.env
