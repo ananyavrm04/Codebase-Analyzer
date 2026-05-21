@@ -1,19 +1,44 @@
-# Python Bytecode
+# Python
 __pycache__/
 *.py[cod]
-
-# Virtual Environments
-.venv/
+*.pyo
+.Python
 venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
 
-# Downloads and Extracted folders
+# Environment
+.env
+.env.*
+!.env.example
+
+# FAISS indexes (large binary files — don't commit)
+.indexes/
+*.faiss
+*.index
+
+# Temp files from repo extraction — THIS IS WHAT WAS BEING COMMITTED BEFORE
+repo_contents/
+repo_extracted_*/
 downloaded_repo/
-repo_extracted/
-*.zip
+/tmp/
 
-# IDE Configs
+# Analysis outputs — don't commit test runs
+analysis_*.json
+*.json.bak
+
+# IDE
 .vscode/
 .idea/
+*.swp
 
-# Secrets (if any)
-.env
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

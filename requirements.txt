@@ -1,7 +1,24 @@
-fastapi==0.116.0
-requests==2.32.4
-together==1.5.17
-uvicorn==0.35.0
-streamlit
-python-magic
+# Core
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.0.0
 
+# Embeddings
+sentence-transformers>=3.0.0      # default local embeddings (all-MiniLM-L6-v2)
+openai>=1.0.0                      # optional: set EMBEDDING_PROVIDER=openai
+
+# Vector search
+faiss-cpu>=1.8.0                   # FAISS HNSW index
+
+# HTTP + file handling
+httpx>=0.27.0
+aiofiles>=23.0.0
+
+# LLM clients (keep Together AI from v1 + add Anthropic/OpenAI as fallback)
+together>=1.0.0
+anthropic>=0.42.0
+
+# Utilities
+python-dotenv>=1.0.0
+loguru>=0.7.0
+numpy>=1.26.0
