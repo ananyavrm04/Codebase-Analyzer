@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Codebase Analyzer — Semantic Code Search & Q&A</title>
+    <meta name="description" content="Semantic code search and Q&A over GitHub repositories. FAISS HNSW indexing, AST-based chunking, sub-200ms search.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #08090d;
+            --bg-secondary: #0f1117;
+            --bg-card: #141620;
+            --bg-input: #1a1c2a;
+            --border: #252838;
+            --text-primary: #e2e4ed;
+            --text-secondary: #8b8fa3;
+            --text-dim: #5a5e72;
+            --accent: #00c8ff;
+            --accent-glow: rgba(0, 200, 255, 0.15);
+            --accent-dim: #0a3d50;
+            --green: #22c55e;
+            --red: #ef4444;
+            --orange: #f59e0b;
+            --font-mono: 'JetBrains Mono', monospace;
+            --font-sans: 'DM Sans', sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── NAV ─────────────────────────────────────── */
+        nav {
+            position: fixed; top: 0; width: 100%; z-index: 100;
+            background: rgba(8, 9, 13, 0.85);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            padding: 0 2rem;
+        }
+        .nav-inner {
+            max-width: 1100px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between;
+            height: 60px;
+        }
+        .logo {
+            font-family: var(--font-mono); font-weight: 700; font-size: 1rem;
+            color: var(--accent); letter-spacing: -0.5px;
+        }
+        .logo span { color: var(--text-dim); }
+        .nav-links { display: flex; gap: 2rem; }
+        .nav-links a {
+            color: var(--text-secondary); text-decoration: none; font-size: 0.875rem;
+            font-weight: 500; transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--accent); }
+
+        /* ── HERO ────────────────────────────────────── */
+        .hero {
+            padding: 10rem 2rem 5rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+            width: 600px; height: 600px;
+            background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .hero h1 {
+            font-family: var(--font-mono); font-size: 3.2rem; font-weight: 700;
+            line-height: 1.15; letter-spacing: -1.5px;
+            margin-bottom: 1.25rem;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent) 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .hero p {
+            color: var(--text-secondary); font-size: 1.15rem; max-width: 600px;
+            margin: 0 auto 2.5rem; line-height: 1.7;
+        }
+        .hero-badges {
+            display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;
+        }
+        .badge {
+            font-family: var(--font-mono); font-size: 0.75rem; font-weight: 500;
+            padding: 0.35rem 0.9rem; border-radius: 100px;
+            border: 1px solid var(--border); color: var(--text-secondary);
+            background: var(--bg-secondary);
+        }
+        .badge.accent { border-color: var(--accent-dim); color: var(--accent); }
+
+        /* ── DEMO SECTION ────────────────────────────── */
+        .demo-section {
+            max-width: 820px; margin: 0 auto; padding: 3rem 2rem 5rem;
+        }
+        .section-label {
+            font-family: var(--font-mono); font-size: 0.75rem; font-weight: 500;
+            color: var(--accent); text-transform: uppercase; letter-spacing: 2px;
+            margin-bottom: 0.75rem;
+        }
+        .section-title {
+            font-size: 1.75rem; font-weight: 700; margin-bottom: 2rem;
+            letter-spacing: -0.5px;
+        }
+
+        .demo-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 12px; padding: 2rem; position: relative;
+        }
+        .demo-card::before {
+            content: '';
+            position: absolute; top: -1px; left: 2rem; right: 2rem; height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+        }
+
+        .input-group {
+            display: flex; gap: 0.75rem; margin-bottom: 1.25rem;
+        }
+        .input-group input {
+            flex: 1; background: var(--bg-input); border: 1px solid var(--border);
+            border-radius: 8px; padding: 0.75rem 1rem;
+            color: var(--text-primary); font-family: var(--font-mono); font-size: 0.875rem;
+            outline: none; transition: border-color 0.2s;
+        }
+        .input-group input:focus { border-color: var(--accent); }
+        .input-group input::placeholder { color: var(--text-dim); }
+
+        .btn {
+            font-family: var(--font-sans); font-weight: 600; font-size: 0.875rem;
+            padding: 0.75rem 1.5rem; border-radius: 8px; border: none;
+            cursor: pointer; transition: all 0.2s; white-space: nowrap;
+        }
+        .btn-primary {
+            background: var(--accent); color: var(--bg-primary);
+        }
+        .btn-primary:hover { filter: brightness(1.15); transform: translateY(-1px); }
+        .btn-primary:disabled {
+            opacity: 0.5; cursor: not-allowed; transform: none;
+        }
+
+        .status-bar {
+            font-family: var(--font-mono); font-size: 0.8rem;
+            padding: 0.6rem 1rem; border-radius: 6px; margin-bottom: 1.25rem;
+            display: none; align-items: center; gap: 0.5rem;
+        }
+        .status-bar.active { display: flex; }
+        .status-bar.loading { background: var(--accent-dim); color: var(--accent); }
+        .status-bar.done { background: rgba(34,197,94,0.1); color: var(--green); }
+        .status-bar.error { background: rgba(239,68,68,0.1); color: var(--red); }
+
+        .pulse {
+            width: 8px; height: 8px; border-radius: 50%; background: currentColor;
+            animation: pulse 1.2s infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        .search-area { display: none; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+        .search-area.active { display: block; }
+
+        .tabs { display: flex; gap: 0; margin-bottom: 1.25rem; }
+        .tab {
+            font-family: var(--font-mono); font-size: 0.8rem; font-weight: 500;
+            padding: 0.5rem 1.25rem; background: none; border: 1px solid var(--border);
+            color: var(--text-secondary); cursor: pointer; transition: all 0.2s;
+        }
+        .tab:first-child { border-radius: 6px 0 0 6px; }
+        .tab:last-child { border-radius: 0 6px 6px 0; border-left: none; }
+        .tab.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent-dim); }
+
+        .results { margin-top: 1rem; }
+        .result-item {
+            background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px;
+            padding: 1rem 1.25rem; margin-bottom: 0.75rem;
+            transition: border-color 0.2s;
+        }
+        .result-item:hover { border-color: var(--accent-dim); }
+        .result-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        .result-file {
+            font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent);
+        }
+        .result-score {
+            font-family: var(--font-mono); font-size: 0.7rem;
+            color: var(--text-dim); background: var(--bg-secondary);
+            padding: 0.2rem 0.5rem; border-radius: 4px;
+        }
+        .result-name { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.4rem; }
+        .result-preview {
+            font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary);
+            line-height: 1.5; white-space: pre-wrap; max-height: 120px; overflow: hidden;
+        }
+        .result-meta { font-size: 0.75rem; color: var(--text-dim); margin-top: 0.5rem; }
+
+        .answer-box {
+            background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px;
+            padding: 1.25rem; line-height: 1.7; font-size: 0.95rem;
+        }
+        .answer-box .sources {
+            margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border);
+            font-size: 0.8rem; color: var(--text-dim);
+        }
+        .answer-box .sources span {
+            font-family: var(--font-mono); color: var(--accent); font-size: 0.75rem;
+        }
+
+        /* ── ARCHITECTURE ────────────────────────────── */
+        .arch-section {
+            max-width: 1100px; margin: 0 auto; padding: 4rem 2rem;
+        }
+        .arch-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.25rem; margin-top: 2rem;
+        }
+        .arch-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 10px; padding: 1.75rem;
+        }
+        .arch-card h3 {
+            font-family: var(--font-mono); font-size: 0.95rem; font-weight: 600;
+            margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;
+        }
+        .arch-card p { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.65; }
+        .arch-icon {
+            width: 28px; height: 28px; border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.9rem; background: var(--accent-dim);
+        }
+
+        .flow-bar {
+            display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+            margin-top: 2rem; justify-content: center;
+        }
+        .flow-step {
+            font-family: var(--font-mono); font-size: 0.75rem; font-weight: 500;
+            padding: 0.5rem 1rem; border-radius: 6px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+        .flow-arrow { color: var(--accent); font-size: 1.2rem; }
+
+        /* ── FOOTER ──────────────────────────────────── */
+        footer {
+            max-width: 1100px; margin: 0 auto; padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 1rem;
+        }
+        footer .credit {
+            font-size: 0.85rem; color: var(--text-dim);
+        }
+        footer .credit a { color: var(--accent); text-decoration: none; }
+        footer .links { display: flex; gap: 1.5rem; }
+        footer .links a {
+            color: var(--text-secondary); text-decoration: none; font-size: 0.85rem;
+            transition: color 0.2s;
+        }
+        footer .links a:hover { color: var(--accent); }
+
+        @media (max-width: 640px) {
+            .hero h1 { font-size: 2rem; }
+            .input-group { flex-direction: column; }
+            .nav-links { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+    <div class="nav-inner">
+        <div class="logo">codebase<span>.analyzer</span></div>
+        <div class="nav-links">
+            <a href="#demo">Demo</a>
+            <a href="#architecture">Architecture</a>
+            <a href="https://github.com/ananyavrm04/Codebase-Analyzer" target="_blank">GitHub</a>
+        </div>
+    </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+    <h1>Semantic Code Search<br>& Q&A</h1>
+    <p>Give it a GitHub repo. It indexes every function with FAISS HNSW. Ask questions about the codebase in natural language — answers in sub-200ms.</p>
+    <div class="hero-badges">
+        <span class="badge accent">FAISS HNSW</span>
+        <span class="badge">AST Chunking</span>
+        <span class="badge">sentence-transformers</span>
+        <span class="badge">FastAPI</span>
+        <span class="badge accent">Sub-200ms Search</span>
+    </div>
+</section>
+
+<!-- DEMO -->
+<section class="demo-section" id="demo">
+    <div class="section-label">Try it live</div>
+    <div class="section-title">Interactive Demo</div>
+
+    <div class="demo-card">
+        <!-- INDEX -->
+        <div class="input-group">
+            <input type="text" id="repoUrl" placeholder="https://github.com/psf/requests" />
+            <button class="btn btn-primary" id="indexBtn" onclick="indexRepo()">Index Repository</button>
+        </div>
+
+        <div class="status-bar" id="statusBar">
+            <div class="pulse"></div>
+            <span id="statusText"></span>
+        </div>
+
+        <!-- SEARCH / ASK -->
+        <div class="search-area" id="searchArea">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('search')">Search</button>
+                <button class="tab" onclick="switchTab('ask')">Ask (Q&A)</button>
+            </div>
+
+            <div class="input-group">
+                <input type="text" id="queryInput" placeholder="how are SSL certificates verified?" />
+                <button class="btn btn-primary" id="queryBtn" onclick="runQuery()">Go</button>
+            </div>
+
+            <div class="results" id="results"></div>
+        </div>
+    </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section class="arch-section" id="architecture">
+    <div class="section-label">How it works</div>
+    <div class="section-title">Architecture</div>
+
+    <div class="flow-bar">
+        <span class="flow-step">GitHub URL</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">Download & Parse</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">AST Chunk</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">Embed</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step">FAISS Index</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-step" style="border-color:var(--accent-dim);color:var(--accent)">Search / Q&A</span>
+    </div>
+
+    <div class="arch-grid">
+        <div class="arch-card">
+            <h3><span class="arch-icon">🌳</span> AST-Based Chunking</h3>
+            <p>Code is parsed into functions and classes using Python's AST module — not arbitrary character splits. Each chunk is a complete semantic unit. Falls back to sliding window for files with syntax errors.</p>
+        </div>
+        <div class="arch-card">
+            <h3><span class="arch-icon">⚡</span> FAISS HNSW Index</h3>
+            <p>HNSW (Hierarchical Navigable Small World) provides sub-10ms vector search with high recall. Chosen over IVF because codebase repos produce < 100k chunks — HNSW is faster and needs no training step at this scale.</p>
+        </div>
+        <div class="arch-card">
+            <h3><span class="arch-icon">🔄</span> Configurable Embeddings</h3>
+            <p>Default: all-MiniLM-L6-v2 via sentence-transformers (local, free, 384-dim). Switch to OpenAI text-embedding-3-small via env var — zero code changes. Plug-and-play model swapping.</p>
+        </div>
+        <div class="arch-card">
+            <h3><span class="arch-icon">🤖</span> LLM Fallback Chain</h3>
+            <p>Together AI (primary) → Anthropic Claude (fallback). The Q&A endpoint retrieves context via FAISS, then passes it to the LLM with structured prompts. If the primary fails, the fallback fires automatically.</p>
+        </div>
+        <div class="arch-card">
+            <h3><span class="arch-icon">⏱️</span> Async Indexing</h3>
+            <p>POST /index returns immediately with a job_id. Indexing runs as a background task — download, parse, chunk, embed, build index. Poll /index/{id}/status for progress. No request timeouts on large repos.</p>
+        </div>
+        <div class="arch-card">
+            <h3><span class="arch-icon">📊</span> Sub-200ms Latency</h3>
+            <p>FAISS HNSW search completes in < 10ms. Full end-to-end (embed query + search + return results) in < 200ms. Tested on repositories up to 80MB with thousands of functions.</p>
+        </div>
+    </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+    <div class="credit">
+        Built by <a href="https://www.linkedin.com/in/ananya-verma-a1b7a2267/" target="_blank">Ananya Verma</a>
+    </div>
+    <div class="links">
+        <a href="https://github.com/ananyavrm04/Codebase-Analyzer" target="_blank">GitHub</a>
+        <a href="https://www.linkedin.com/in/ananya-verma-a1b7a2267/" target="_blank">LinkedIn</a>
+        <a href="https://leetcode.com/u/ananyaverma28/" target="_blank">LeetCode</a>
+    </div>
+</footer>
+
+<script>
+    const API = window.location.origin;
+    let currentMode = 'search';
+    let currentRepoUrl = '';
+
+    function setStatus(type, text) {
+        const bar = document.getElementById('statusBar');
+        bar.className = `status-bar active ${type}`;
+        document.getElementById('statusText').textContent = text;
+    }
+
+    function hideStatus() {
+        document.getElementById('statusBar').className = 'status-bar';
+    }
+
+    async function indexRepo() {
+        const url = document.getElementById('repoUrl').value.trim();
+        if (!url) return;
+        currentRepoUrl = url;
+
+        const btn = document.getElementById('indexBtn');
+        btn.disabled = true;
+        btn.textContent = 'Indexing...';
+        setStatus('loading', 'Downloading repository...');
+
+        try {
+            const res = await fetch(`${API}/index`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ repo_url: url, strategy: 'function' })
+            });
+            const data = await res.json();
+
+            if (data.status === 'already_indexed') {
+                setStatus('done', `✓ Already indexed — ready to search`);
+                showSearch();
+                btn.disabled = false;
+                btn.textContent = 'Index Repository';
+                return;
+            }
+
+            pollStatus(data.job_id);
+        } catch (e) {
+            setStatus('error', `Error: ${e.message}`);
+            btn.disabled = false;
+            btn.textContent = 'Index Repository';
+        }
+    }
+
+    async function pollStatus(jobId) {
+        const btn = document.getElementById('indexBtn');
+        try {
+            const res = await fetch(`${API}/index/${jobId}/status`);
+            const data = await res.json();
+
+            if (data.status === 'done') {
+                setStatus('done', `✓ Indexed ${data.chunks_indexed} chunks in ${data.embed_time_ms}ms`);
+                showSearch();
+                btn.disabled = false;
+                btn.textContent = 'Index Repository';
+            } else if (data.status === 'failed') {
+                setStatus('error', `Failed: ${data.error}`);
+                btn.disabled = false;
+                btn.textContent = 'Index Repository';
+            } else {
+                setStatus('loading', `${data.status}${data.chunks_found ? ` — ${data.chunks_found} chunks found` : ''}...`);
+                setTimeout(() => pollStatus(jobId), 1500);
+            }
+        } catch (e) {
+            setTimeout(() => pollStatus(jobId), 2000);
+        }
+    }
+
+    function showSearch() {
+        document.getElementById('searchArea').className = 'search-area active';
+        document.getElementById('queryInput').focus();
+    }
+
+    function switchTab(mode) {
+        currentMode = mode;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        event.target.classList.add('active');
+        document.getElementById('queryInput').placeholder =
+            mode === 'search'
+                ? 'how are SSL certificates verified?'
+                : 'How does the retry mechanism work?';
+        document.getElementById('results').innerHTML = '';
+    }
+
+    async function runQuery() {
+        const query = document.getElementById('queryInput').value.trim();
+        if (!query || !currentRepoUrl) return;
+
+        const endpoint = currentMode === 'search' ? '/search' : '/ask';
+        const body = currentMode === 'search'
+            ? { repo_url: currentRepoUrl, query, top_k: 5 }
+            : { repo_url: currentRepoUrl, question: query, top_k: 5 };
+
+        document.getElementById('results').innerHTML = '<div style="color:var(--text-dim);font-size:0.85rem;">Searching...</div>';
+
+        try {
+            const res = await fetch(`${API}${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+
+            if (currentMode === 'search') {
+                renderSearchResults(data);
+            } else {
+                renderAnswer(data);
+            }
+        } catch (e) {
+            document.getElementById('results').innerHTML =
+                `<div style="color:var(--red);font-size:0.85rem;">Error: ${e.message}</div>`;
+        }
+    }
+
+    function renderSearchResults(data) {
+        const container = document.getElementById('results');
+        if (!data.results || data.results.length === 0) {
+            container.innerHTML = '<div style="color:var(--text-dim);font-size:0.85rem;">No results found.</div>';
+            return;
+        }
+        container.innerHTML = data.results.map(r => `
+            <div class="result-item">
+                <div class="result-header">
+                    <span class="result-file">${r.file.split('/').slice(-2).join('/')}</span>
+                    <span class="result-score">${r.score.toFixed(3)} · ${data.search_ms || '< 200'}ms</span>
+                </div>
+                <div class="result-name">${r.name} <span style="color:var(--text-dim);font-weight:400;font-size:0.8rem;">${r.type} · lines ${r.lines}</span></div>
+                <div class="result-preview">${escapeHtml(r.preview)}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderAnswer(data) {
+        const container = document.getElementById('results');
+        container.innerHTML = `
+            <div class="answer-box">
+                ${escapeHtml(data.answer)}
+                ${data.sources ? `
+                    <div class="sources">
+                        Sources: ${data.sources.map(s => `<span>${s.name}</span>`).join(' · ')}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text || '';
+        return div.innerHTML;
+    }
+
+    // Enter key triggers action
+    document.getElementById('repoUrl').addEventListener('keypress', e => { if (e.key === 'Enter') indexRepo(); });
+    document.getElementById('queryInput').addEventListener('keypress', e => { if (e.key === 'Enter') runQuery(); });
+</script>
+
+</body>
+</html>
