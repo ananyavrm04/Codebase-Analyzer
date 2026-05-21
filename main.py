@@ -19,6 +19,7 @@ from typing import Optional
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from fastapi.responses import FileResponse
 
 from app.github_utils import fetch_repo_zip, unzip_file
 from app.file_analyzer import get_python_files
@@ -193,6 +194,9 @@ def ask_codebase(req: AskRequest):
         ],
     }
 
+@app.get("/", include_in_schema=False)
+def serve_frontend():
+    return FileResponse("static/index.html")
 
 @app.get("/health")
 def health():
