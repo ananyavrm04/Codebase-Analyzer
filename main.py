@@ -29,6 +29,7 @@ from app.file_analyzer import get_python_files
 from app.chunker import chunk_python_file, ChunkStrategy
 from app.indexer import RepoIndex
 from app.llm_client import answer_with_context
+from app.rate_limiter import RateLimitMiddleware
 
 app = FastAPI(
     title="Codebase Analyzer",
@@ -36,6 +37,8 @@ app = FastAPI(
     version="2.0.0",
 )
 
+
+app.add_middleware(RateLimitMiddleware)
 # In-memory job store — swap for Redis in production
 _jobs: dict[str, dict] = {}
 

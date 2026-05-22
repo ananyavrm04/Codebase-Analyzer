@@ -1,15 +1,55 @@
 """
-LLM client for code Q&A and summarisation.
-Primary: Groq (free, fastest inference via LPU).
-Fallback: Together AI → Anthropic Claude.
+LLM client with fallback chain and per-provider rate limiting.
+Primary: Groq (free, fast). Fallbacks: Together AI → Anthropic.
+Groq rate limit configurable via GROQ_RATE_LIMIT / GROQ_RATE_WINDOW env vars.
 """
 import os
+import time
 from typing import List, Tuple
 
+GROQ_RATE_LIMIT = int(os.getenv("GROQ_RATE_LIMIT", "5"))       # max requests per window
+GROQ_RATE_WINDOW = int(os.getenv("GROQ_RATE_WINDOW", "60"))    # window in seconds
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-# ── Groq (primary — free, fast) ───────────────────────────────────────────────
+
+# ── Groq rate limiter (Redis-backed) ──────────────────────────────────────────
+
+def _check_groq_rate_limit():
+    """
+    Check Groq rate limit via Redis sliding window.
+    Raises RuntimeError if limit exceeded.
+    Silently passes if Redis is unavailable (graceful degradation).
+    """
+    try:
+        import redis as sync_redis
+        r = sync_redis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=2)
+
+        key = "ratelimit:groq"
+        now = time.time()
+
+        pipe = r.pipeline()
+        pipe.zremrangebyscore(key, 0, now - GROQ_RATE_WINDOW)
+        pipe.zadd(key, {f"{now}": now})
+        pipe.zcard(key)
+        pipe.expire(key, GROQ_RATE_WINDOW + 1)
+        results = pipe.execute()
+
+        if results[2] > GROQ_RATE_LIMIT:
+            raise RuntimeError(
+                f"Groq rate limit exceeded ({GROQ_RATE_LIMIT} requests/{GROQ_RATE_WINDOW}s). "
+                f"Falling back to next provider."
+            )
+    except RuntimeError:
+        raise  # re-raise rate limit errors
+    except Exception:
+        pass  # Redis unavailable — skip rate limiting, allow request
+
+
+# ── LLM Providers ─────────────────────────────────────────────────────────────
 
 def _groq_complete(prompt: str, system: str = "", max_tokens: int = 1024) -> str:
+    _check_groq_rate_limit()
+
     from groq import Groq
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
@@ -26,8 +66,6 @@ def _groq_complete(prompt: str, system: str = "", max_tokens: int = 1024) -> str
     )
     return response.choices[0].message.content.strip()
 
-
-# ── Together AI (fallback) ────────────────────────────────────────────────────
 
 def _together_complete(prompt: str, system: str = "", max_tokens: int = 1024) -> str:
     from together import Together
@@ -46,8 +84,6 @@ def _together_complete(prompt: str, system: str = "", max_tokens: int = 1024) ->
     )
     return response.choices[0].message.content.strip()
 
-
-# ── Anthropic (second fallback) ───────────────────────────────────────────────
 
 def _anthropic_complete(prompt: str, system: str = "", max_tokens: int = 1024) -> str:
     import anthropic
@@ -108,7 +144,6 @@ def answer_with_context(
     if not context_chunks:
         return "No relevant code found for this question."
 
-    # Build context from retrieved chunks
     context_parts = []
     for chunk, score in context_chunks:
         header = f"File: {chunk['file_path']} | {chunk['name']} (lines {chunk['start_line']}-{chunk['end_line']})"
