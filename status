@@ -1,0 +1,14 @@
+[33m059adda[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m feat: upgrade API with async indexing, semantic search, Q&A endpoints
+[33mc4c4db6[m feat: add FAISS HNSW index manager with disk persistence
+[33ma33a3aa[m feat: add configurable embedding module (sentence-transformers + OpenAI)
+[33m51fef30[m feat: add AST-based code chunker with function/class/sliding strategies
+[33m9a08192[m chore: remove committed test artifacts, fix .gitignore
+[33m64aedd9[m Add python-magic to requirements
+[33m143d141[m Add streamlit to requirements
+[33mbad7fa1[m Update requirements.txt
+[33mf6a4191[m Update streamlit_app.py
+[33mcbf278e[m Create streamlit_app.py
+[33m28c610c[m Merge branch 'main' of https://github.com/ananyavrm04/codebase-analyzer
+[33m2819808[m Initial commit with .gitignore and project files
+[33m390a2bc[m Update README.md
+[33m67da971[m Initial commit

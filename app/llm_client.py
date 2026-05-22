@@ -1,14 +1,33 @@
 """
 LLM client for code Q&A and summarisation.
-Default: Together AI (Llama/Mistral). Fallback: Anthropic Claude.
-Switch via LLM_PROVIDER env var.
+Primary: Groq (free, fastest inference via LPU).
+Fallback: Together AI → Anthropic Claude.
 """
 import os
 from typing import List, Tuple
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "together")
 
-# ── Together AI ────────────────────────────────────────────────────────────────
+# ── Groq (primary — free, fast) ───────────────────────────────────────────────
+
+def _groq_complete(prompt: str, system: str = "", max_tokens: int = 1024) -> str:
+    from groq import Groq
+    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    response = client.chat.completions.create(
+        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=0.3,
+    )
+    return response.choices[0].message.content.strip()
+
+
+# ── Together AI (fallback) ────────────────────────────────────────────────────
 
 def _together_complete(prompt: str, system: str = "", max_tokens: int = 1024) -> str:
     from together import Together
@@ -28,7 +47,7 @@ def _together_complete(prompt: str, system: str = "", max_tokens: int = 1024) ->
     return response.choices[0].message.content.strip()
 
 
-# ── Anthropic (fallback) ──────────────────────────────────────────────────────
+# ── Anthropic (second fallback) ───────────────────────────────────────────────
 
 def _anthropic_complete(prompt: str, system: str = "", max_tokens: int = 1024) -> str:
     import anthropic
@@ -43,28 +62,25 @@ def _anthropic_complete(prompt: str, system: str = "", max_tokens: int = 1024) -
     return response.content[0].text.strip()
 
 
-# ── Router ─────────────────────────────────────────────────────────────────────
+# ── Router with fallback chain ─────────────────────────────────────────────────
 
 def _complete(prompt: str, system: str = "", max_tokens: int = 1024) -> str:
-    """Route to the active LLM provider with automatic fallback."""
-    providers = {
-        "together": _together_complete,
-        "anthropic": _anthropic_complete,
-    }
+    """Try Groq → Together AI → Anthropic. First success wins."""
+    providers = [
+        ("groq", _groq_complete),
+        ("together", _together_complete),
+        ("anthropic", _anthropic_complete),
+    ]
 
-    primary = providers.get(LLM_PROVIDER, _together_complete)
-    try:
-        return primary(prompt, system, max_tokens)
-    except Exception as e:
-        # Fallback: try the other provider
-        fallback_key = "anthropic" if LLM_PROVIDER == "together" else "together"
-        fallback = providers.get(fallback_key)
-        if fallback:
-            try:
-                return fallback(prompt, system, max_tokens)
-            except Exception:
-                pass
-        raise RuntimeError(f"All LLM providers failed. Last error: {e}")
+    last_error = None
+    for name, fn in providers:
+        try:
+            return fn(prompt, system, max_tokens)
+        except Exception as e:
+            last_error = e
+            continue
+
+    raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────

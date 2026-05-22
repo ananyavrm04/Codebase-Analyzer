@@ -10,6 +10,9 @@ Endpoints:
 """
 from __future__ import annotations
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import asyncio
 import hashlib
 import os
@@ -79,7 +82,7 @@ async def _run_indexing(repo_url: str, strategy: ChunkStrategy, job_id: str):
         await asyncio.to_thread(unzip_file, zip_path, extract_dir)
 
         _jobs[job_id].update({"status": "chunking"})
-        py_files = get_python_files(extract_dir)
+        py_files = [f for f in get_python_files(extract_dir) if not f.endswith("__init__.py")]
 
         if not py_files:
             raise ValueError("No Python files found in repository.")
