@@ -119,7 +119,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 | Embeddings | sentence-transformers (default) / OpenAI |
 | Vector search | FAISS HNSW |
 | Code parsing | Python `ast` module |
-| LLM | Together AI (primary) / Anthropic (fallback) |
+| LLM | Groq (primary) / Together AI / Anthropic (fallback chain) |
 | Async | FastAPI BackgroundTasks + asyncio |
 
 ## Performance
