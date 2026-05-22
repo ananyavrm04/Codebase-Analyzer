@@ -30,6 +30,7 @@ from app.chunker import chunk_python_file, ChunkStrategy
 from app.indexer import RepoIndex
 from app.llm_client import answer_with_context
 from app.rate_limiter import RateLimitMiddleware
+from app.security import validate_repo_url, check_repo_size
 
 app = FastAPI(
     title="Codebase Analyzer",
@@ -74,7 +75,10 @@ def _repo_id(url: str) -> str:
 async def _run_indexing(repo_url: str, strategy: ChunkStrategy, job_id: str):
     tmp_dir = f"/tmp/codebase_{job_id}"
     try:
-        _jobs[job_id].update({"status": "downloading"})
+        # Security: check repo size before downloading
+        _jobs[job_id].update({"status": "validating"})
+        repo_info = check_repo_size(repo_url)
+        _jobs[job_id].update({"status": "downloading", **repo_info})
 
         zip_path = await asyncio.to_thread(
             fetch_repo_zip, repo_url, download_dir=tmp_dir
@@ -120,6 +124,12 @@ async def _run_indexing(repo_url: str, strategy: ChunkStrategy, job_id: str):
 
 @app.post("/index", summary="Submit a GitHub repo for semantic indexing")
 async def index_repo(req: IndexRequest, background_tasks: BackgroundTasks):
+    # Security: validate URL + SSRF check before anything else
+    try:
+        validate_repo_url(req.repo_url)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
     job_id = _repo_id(req.repo_url)
 
     # Skip re-indexing if already done
