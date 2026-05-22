@@ -21,7 +21,7 @@ POST /ask     →  Embed query  →  FAISS top-k  →  LLM answers with context 
 
 **Configurable embeddings.** Default: `all-MiniLM-L6-v2` via sentence-transformers (local, free, 384-dim). Set `EMBEDDING_PROVIDER=openai` for OpenAI `text-embedding-3-small` (1536-dim, paid). Swap models via env var — zero code changes.
 
-**LLM fallback chain.** Together AI (primary) → Anthropic Claude (fallback). If the primary LLM fails, the Q&A endpoint automatically routes to the fallback.
+**LLM fallback chain.** Groq (primary, free) → Together AI → Anthropic Claude. If the primary LLM fails, the Q&A endpoint automatically routes to the fallback.
 
 **Async indexing.** Indexing is a background task — POST `/index` returns immediately with a `job_id`. Poll `/index/{job_id}/status` for progress. No request timeouts on large repos.
 
